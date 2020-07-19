@@ -34,10 +34,10 @@ replay_buffer_max_length = 100000  # @param {type:"integer"}
 
 batch_size = 64  # @param {type:"integer"}
 learning_rate = 1e-3  # @param {type:"number"}
-log_interval = num_iterations / 10  # @param {type:"integer"}
+log_interval = num_iterations // 20  # @param {type:"integer"}
 
 num_eval_episodes = 10  # @param {type:"integer"}
-eval_interval = num_iterations // 10  # @param {type:"integer"}
+eval_interval = num_iterations // 20  # @param {type:"integer"}
 
 fc_layer_params = (100,)  # A tuple describing the number and size of the model's hidden layers
 
@@ -206,7 +206,7 @@ print('ret:', returns)
 plt.plot(iterations, returns)
 plt.ylabel('Wining rate')
 plt.xlabel('Iterations')
-plt.ylim(top=40)
+plt.ylim(top=100)
 plt.show()
 
 
