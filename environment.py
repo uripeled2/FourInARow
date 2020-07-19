@@ -158,6 +158,11 @@ class FourInARow(py_environment.PyEnvironment):
 env = FourInARow()
 # utils.validate_py_environment(env, episodes=10)   # env test
 
+# tf_env = tf_py_environment.TFPyEnvironment(env)
+# print(isinstance(tf_env, tf_environment.TFEnvironment))
+# print("TimeStep Specs:", tf_env.time_step_spec())
+# print("Action Specs:", tf_env.action_spec())
+
 
 def run():
     """
@@ -177,5 +182,4 @@ def run():
     print(time_step.observation)
     cumulative_reward += time_step.reward
     print('Final Reward = ', cumulative_reward)
-
 
