@@ -105,7 +105,7 @@ class FourInARow(py_environment.PyEnvironment):
         # Make sure it is a valid move
         if place_row is None:
             self._episode_ended = True
-            reward = -100
+            reward = -10
             return ts.termination(np.array(self._state, dtype=np.int32), reward)
 
         # Update the board
@@ -118,14 +118,14 @@ class FourInARow(py_environment.PyEnvironment):
         # I won
         if check_win(self._state, action, 6 - place_row, self.IDENTIFIER):
             self._episode_ended = True
-            reward = 30
+            reward = 1
             return ts.termination(np.array(self._state, dtype=np.int32), reward)
 
         # Check if the board is full
         is_full = self.board_is_full()
         if is_full:
             self._episode_ended = True
-            return ts.transition(np.array(self._state, dtype=np.int32), reward=0.1)
+            return ts.transition(np.array(self._state, dtype=np.int32), reward=0.5)
 
         # Make a random move
         col, row = self.random_move()
@@ -133,17 +133,17 @@ class FourInARow(py_environment.PyEnvironment):
         # He won
         if check_win(self._state, col, 6 - row, 2):
             self._episode_ended = True
-            reward = -30
+            reward = -1
             return ts.termination(np.array(self._state, dtype=np.int32), reward)
 
         # Check if the board is full
         is_full = self.board_is_full()
         if is_full:
             self._episode_ended = True
-            return ts.transition(np.array(self._state, dtype=np.int32), reward=0.1)
+            return ts.transition(np.array(self._state, dtype=np.int32), reward=0.5)
 
         return ts.transition(
-            np.array(self._state, dtype=np.int32), reward=0.1, discount=1.0)
+            np.array(self._state, dtype=np.int32), reward=0.01, discount=0.99)
 
     def board_is_full(self):
         for col in range(7):

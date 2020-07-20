@@ -1,11 +1,14 @@
 from __future__ import absolute_import, division, print_function
+
 from environment import FourInARow
+from evaluation import win_rate, compute_avg_return
 
 import base64
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
+import time
 
 import tensorflow as tf
 
@@ -23,23 +26,24 @@ from tf_agents.utils import common
 
 tf.compat.v1.enable_v2_behavior()
 
+start = time.time()
 
 # Hyperparameters
 
-num_iterations = 20000 # @param {type:"integer"}
+num_iterations: int = 20000
 
-initial_collect_steps = 1000  # @param {type:"integer"}
-collect_steps_per_iteration = 1  # @param {type:"integer"}
-replay_buffer_max_length = 100000  # @param {type:"integer"}
+initial_collect_steps: int = 1000
+collect_steps_per_iteration: int = 1
+replay_buffer_max_length: int = 100000
 
-batch_size = 64  # @param {type:"integer"}
-learning_rate = 1e-3  # @param {type:"number"}
-log_interval = num_iterations // 20  # @param {type:"integer"}
+batch_size: int = 64
+learning_rate: float = 1e-3
+log_interval: int = 1000
 
-num_eval_episodes = 10  # @param {type:"integer"}
-eval_interval = num_iterations // 20  # @param {type:"integer"}
+num_eval_episodes: int = 100
+eval_interval: int = 2000
 
-fc_layer_params = (100,)  # A tuple describing the number and size of the model's hidden layers
+fc_layer_params: tuple = (100,)  # Describing the number and size of the model's hidden layers
 
 
 # setup the env
@@ -51,6 +55,7 @@ train_env = tf_py_environment.TFPyEnvironment(train_py_env)
 eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
 
+# Agent
 # setup the net
 q_net = q_network.QNetwork(
     train_env.observation_spec(),
@@ -76,41 +81,6 @@ agent.initialize()
 eval_policy = agent.policy  # The main policy that is used for evaluation and deployment
 collect_policy = agent.collect_policy  # A second policy that is used for data collection
 random_policy = random_tf_policy.RandomTFPolicy(train_env.time_step_spec(), train_env.action_spec())
-
-
-# Metrics and evaluation
-def compute_avg_return(environment, policy, num_episodes=10):
-
-    total_return = 0.0
-    for _ in range(num_episodes):
-
-        time_step = environment.reset()
-        episode_return = 0.0
-
-        while not time_step.is_last():
-            action_step = policy.action(time_step)
-            time_step = environment.step(action_step.action)
-            episode_return += time_step.reward
-        total_return += episode_return
-
-    tensor_avg_return = total_return / num_episodes
-    num_avg_return = tensor_avg_return.numpy()[0]
-    return num_avg_return
-
-
-def win_rate(environment, policy, num_episodes=10):
-    wins = 0
-    for _ in range(num_episodes):
-        time_step = environment.reset()
-        episode_return = 0.0
-
-        while not time_step.is_last():
-            action_step = policy.action(time_step)
-            time_step = environment.step(action_step.action)
-            episode_return += time_step.reward
-        if episode_return > 30:
-            wins += 1
-    return (wins / num_episodes) * 100
 
 
 # setup replay buffer
@@ -159,11 +129,34 @@ agent.train_step_counter.assign(0)
 # Evaluate the agent's policy once before training.
 # avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 wins = win_rate(eval_env, agent.policy, num_eval_episodes)
+print(F'step = {0}: Wining rate = {wins}')
 returns = [wins]
 
-for _ in range(num_iterations):
+# for _ in range(num_iterations):
+#
+#     # Collect a few steps using collect_policy and save to the replay buffer.
+#     for _ in range(collect_steps_per_iteration):
+#         collect_step(train_env, agent.collect_policy, replay_buffer)
+#
+#     # Sample a batch of data from the buffer and update the agent's network.
+#     experience, unused_info = next(iterator)
+#     train_loss = agent.train(experience).loss
+#
+#     step = agent.train_step_counter.numpy()
+#
+#     if step % log_interval == 0:
+#         print(F'step = {step}: loss = {train_loss}')
+#
+#     if step % eval_interval == 0:
+#         wins = win_rate(eval_env, agent.policy, num_eval_episodes)
+#         print(F'step = {step}: Wining rate = {wins}')
+#         returns.append(wins)
 
-    # Collect a few steps using collect_policy and save to the replay buffer.
+itr = 0
+while wins < 98:
+    itr += 1
+
+    # Collect a few steps using collect_policy and save to the rplay buffer.
     for _ in range(collect_steps_per_iteration):
         collect_step(train_env, agent.collect_policy, replay_buffer)
 
@@ -177,19 +170,19 @@ for _ in range(num_iterations):
         print(F'step = {step}: loss = {train_loss}')
 
     if step % eval_interval == 0:
-        # avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
         wins = win_rate(eval_env, agent.policy, num_eval_episodes)
-        # print(F'step = {step}: Average Return = {wins}')
         print(F'step = {step}: Wining rate = {wins}')
         returns.append(wins)
 
+
+print('sec:', time.time() - start)
 
 # Visualization
 
 # Run a game
 
 environment = eval_env
-policy = eval_policy
+policy = agent.policy
 time_step = environment.reset()
 
 while not time_step.is_last():
@@ -200,9 +193,10 @@ print('last:', time_step.observation)
 
 # Plot
 
-iterations = range(0, num_iterations + 1, eval_interval)
-print('iter:', iterations)
-print('ret:', returns)
+# iterations = range(0, num_iterations + 1, eval_interval)
+iterations = range(0, itr + 1, eval_interval)
+# print('iter:', iterations)
+# print('ret:', returns)
 plt.plot(iterations, returns)
 plt.ylabel('Wining rate')
 plt.xlabel('Iterations')
