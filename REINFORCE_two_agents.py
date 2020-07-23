@@ -169,8 +169,10 @@ def play_until_you_win(tf_agent, replay_buffer, target: int = wining_rate_goal):
 for i in range(rounds):
     one = i % 2 == 0
     if one:
+        print("Agent1:")
         play_until_you_win(tf_agent1, replay_buffer1)
     else:
+        print("Agent2:")
         play_until_you_win(tf_agent2, replay_buffer2)
 
     print(F'Finished round {rou} in: {time.time() - start}, num of itr = {itr}')
