@@ -9,6 +9,7 @@ import random
 import collections
 import os
 import tempfile
+
 from environment import FourInARow
 
 from tf_agents.environments import py_environment
@@ -23,25 +24,33 @@ from tf_agents.policies import random_tf_policy, policy_saver
 
 tf.compat.v1.enable_v2_behavior()
 
-tempdir = os.getenv("TEST_TMPDIR", tempfile.gettempdir())
+policy1 = tf.compat.v2.saved_model.load("temp1")
+policy2 = tf.compat.v2.saved_model.load("temp2")
+env1 = FourInARow(policy1)
+env2 = FourInARow(policy2)
+env1 = tf_py_environment.TFPyEnvironment(env1)
+env2 = tf_py_environment.TFPyEnvironment(env2)
 
-policy_dir = os.path.join(tempdir, 'policy')
-policy = tf.compat.v2.saved_model.load(policy_dir)
 
-env = FourInARow(policy)
-env = tf_py_environment.TFPyEnvironment(env)
+def game(env):
+    time_step = env.reset()
 
-time_step = env.reset()
+    while not time_step.is_last():
+        print(time_step.observation)
+        action = int(input("col: "))
+        # action = policy.action(time_step).action
+        time_step = env.step(action)
+    print('last:', time_step.observation)
+    if time_step.reward == 1:
+        print("You won!")
+    elif time_step.reward == 0.5:
+        print("Tie")
+    elif time_step.reward == -1:
+        print("You lost!")
+    else:
+        print("In valid move")
 
-while not time_step.is_last():
-    print(time_step.observation)
-    action = int(input("col: "))
-    time_step = env.step(action)
-print('last:', time_step.observation)
-if time_step.reward == 1:
-    print("You won!")
-elif time_step.reward == 0.5:
-    print("Tie")
-else:
-    print("You lost!")
 
+game(env1)
+print("new")
+game(env2)
