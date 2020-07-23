@@ -1,3 +1,4 @@
+# Recycling one agent
 
 from __future__ import absolute_import
 from __future__ import division
@@ -54,8 +55,8 @@ rounds: int = 25
 
 # setup the env
 def crete_envs(policy):
-    train_py_env = FourInARow(enemy_policy)
-    eval_py_env = FourInARow(enemy_policy)
+    train_py_env = FourInARow(policy)
+    eval_py_env = FourInARow(policy)
 
     # convert the env to tf_env
     train_env = tf_py_environment.TFPyEnvironment(train_py_env)
