@@ -1,3 +1,4 @@
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -11,7 +12,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import PIL.Image
-
+import os
+import tempfile
 import tensorflow as tf
 
 from tf_agents.agents.reinforce import reinforce_agent
@@ -24,11 +26,16 @@ from tf_agents.networks import actor_distribution_network
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.trajectories import trajectory
 from tf_agents.utils import common
+from tf_agents.policies import policy_saver
 
 tf.compat.v1.enable_v2_behavior()
 
-start = time.time()
+tempdir = os.getenv("TEST_TMPDIR", tempfile.gettempdir())
 
+policy_dir = os.path.join(tempdir, 'policy')
+enemy_policy = tf.compat.v2.saved_model.load(policy_dir)
+
+start = time.time()
 
 # Hyperparameters
 
@@ -39,47 +46,53 @@ replay_buffer_capacity: int = 2000
 fc_layer_params: tuple = (100,)
 
 learning_rate: float = 1e-3
-log_interval: int = 50
+log_interval: int = 100
 num_eval_episodes: int = 100
 eval_interval: int = 100
 
+rounds: int = 25
 
 # setup the env
-train_py_env = FourInARow()
-eval_py_env = FourInARow()
+def crete_envs(policy):
+    train_py_env = FourInARow(enemy_policy)
+    eval_py_env = FourInARow(enemy_policy)
 
-# convert the env to tf_env
-train_env = tf_py_environment.TFPyEnvironment(train_py_env)
-eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
+    # convert the env to tf_env
+    train_env = tf_py_environment.TFPyEnvironment(train_py_env)
+    eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
+    return train_env, eval_env
+
+train_env, eval_env = crete_envs(enemy_policy)
 
 
-# Agent
+# setup agent
+def create_agent():
+    # setup the net
+    actor_net = actor_distribution_network.ActorDistributionNetwork(
+        train_env.observation_spec(),
+        train_env.action_spec(),
+        fc_layer_params=fc_layer_params)
 
-# setup the net
-actor_net = actor_distribution_network.ActorDistributionNetwork(
-    train_env.observation_spec(),
-    train_env.action_spec(),
-    fc_layer_params=fc_layer_params)
+    optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
 
-optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
+    train_step_counter = tf.compat.v2.Variable(0)
 
-train_step_counter = tf.compat.v2.Variable(0)
+    tf_agent = reinforce_agent.ReinforceAgent(
+        train_env.time_step_spec(),
+        train_env.action_spec(),
+        actor_network=actor_net,
+        optimizer=optimizer,
+        normalize_returns=True,
+        train_step_counter=train_step_counter)
 
-tf_agent = reinforce_agent.ReinforceAgent(
-    train_env.time_step_spec(),
-    train_env.action_spec(),
-    actor_network=actor_net,
-    optimizer=optimizer,
-    normalize_returns=True,
-    train_step_counter=train_step_counter)
+    tf_agent.initialize()
+    return tf_agent
 
-tf_agent.initialize()
-
+tf_agent = create_agent()
 
 # Policies
 eval_policy = tf_agent.policy
 collect_policy = tf_agent.collect_policy
-
 
 # Replay buffer
 replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
@@ -90,7 +103,6 @@ replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
 
 # Data Collection
 def collect_episode(environment, policy, num_episodes):
-
     episode_counter = 0
     environment.reset()
 
@@ -114,55 +126,54 @@ tf_agent.train = common.function(tf_agent.train)
 # Reset the train step
 tf_agent.train_step_counter.assign(0)
 
-# Evaluate the agent's policy once before training.
-wins = win_rate(eval_env, tf_agent.policy, num_eval_episodes)
-print(F'step = {0}: Wining rate = {wins}')
-returns = [wins]
-
-# for _ in range(num_iterations):
-#
-#     # Collect a few episodes using collect_policy and save to the replay buffer.
-#     collect_episode(
-#       train_env, tf_agent.collect_policy, collect_episodes_per_iteration)
-#
-#     # Use data from the buffer and update the agent's network.
-#     experience = replay_buffer.gather_all()
-#     train_loss = tf_agent.train(experience)
-#     replay_buffer.clear()
-#
-#     step = tf_agent.train_step_counter.numpy()
-#
-#     if step % log_interval == 0:
-#         print('step = {0}: loss = {1}'.format(step, train_loss.loss))
-#
-#     if step % eval_interval == 0:
-#         wins = win_rate(eval_env, tf_agent.policy, num_eval_episodes)
-#         print(F'step = {step}: Wining rate = {wins}')
-#         returns.append(wins)
+itrs = []
 itr = 0
-while wins < 98:
-    itr += 1
-    # Collect a few episodes using collect_policy and save to the replay buffer.
-    collect_episode(
-      train_env, tf_agent.collect_policy, collect_episodes_per_iteration)
+rou = 1
 
-    # Use data from the buffer and update the agent's network.
-    experience = replay_buffer.gather_all()
-    train_loss = tf_agent.train(experience)
-    replay_buffer.clear()
+def play_until_you_win(target: int = 78):
+    wining_rate = win_rate(eval_env, tf_agent.policy, num_eval_episodes)
+    print("Start wining_rate =", wining_rate)
+    while wining_rate < target:
+        global itr
+        itr += 1
+        # Collect a few episodes using collect_policy and save to the replay buffer.
+        collect_episode(
+            train_env, tf_agent.collect_policy, collect_episodes_per_iteration)
 
-    step = tf_agent.train_step_counter.numpy()
+        # Use data from the buffer and update the agent's network.
+        experience = replay_buffer.gather_all()
+        train_loss = tf_agent.train(experience)
+        replay_buffer.clear()
 
-    if step % log_interval == 0:
-        print('step = {0}: loss = {1}'.format(step, train_loss.loss))
+        step = tf_agent.train_step_counter.numpy()
 
-    if step % eval_interval == 0:
-        wins = win_rate(eval_env, tf_agent.policy, num_eval_episodes)
-        print(F'step = {step}: Wining rate = {wins}')
-        returns.append(wins)
+        if step % log_interval == 0:
+            print('step = {0}: loss = {1}'.format(step, train_loss.loss))
 
-print('sec:', time.time() - start)
+        if step % eval_interval == 0:
+            wining_rate = win_rate(eval_env, tf_agent.policy, num_eval_episodes)
+            print(F'step = {step}: Wining rate = {wining_rate}')
 
+
+# Play ageist yourself
+for i in range(rounds):
+    play_until_you_win()
+    print(F'Finished round {rou} in: {time.time() - start}, num of itr = {itr}')
+    itrs.append(itr)
+    itr = 0
+    rou += 1
+    if i != rounds - 1:
+        # Update env
+        enemy_policy = tf_agent.policy
+        train_env, eval_env = crete_envs(enemy_policy)
+
+        # Restart agent
+        tf_agent = create_agent()
+
+# Save
+policy_dir = os.path.join(tempdir, 'policy')
+tf_policy_saver = policy_saver.PolicySaver(tf_agent.policy)
+tf_policy_saver.save(policy_dir)
 
 # Visualization
 
@@ -178,14 +189,7 @@ while not time_step.is_last():
     time_step = environment.step(action_step.action)
 print('last:', time_step.observation)
 
-# Plot
 
-# iterations = range(0, num_iterations + 1, eval_interval)
-iterations = range(0, itr + 1, eval_interval)
-# print('iter:', iterations)
-# print('ret:', returns)
-plt.plot(iterations, returns)
-plt.ylabel('Wining rate')
-plt.xlabel('Iterations')
-plt.ylim(top=100)
+# Plot
+plt.bar(range(len(itrs)), itrs, width=0.4)
 plt.show()
