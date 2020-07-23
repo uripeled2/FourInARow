@@ -24,10 +24,6 @@ tf.compat.v1.enable_v2_behavior()
 
 tempdir = os.getenv("TEST_TMPDIR", tempfile.gettempdir())
 
-FIRST = ts.StepType.FIRST
-MID = ts.StepType.MID
-LAST = ts.StepType.LAST
-
 
 def check_win_in_row(line, turn, win_amount=4):
     count = 0
@@ -43,7 +39,7 @@ def check_win_in_row(line, turn, win_amount=4):
 
 class FourInARow(py_environment.PyEnvironment):
 
-    def __init__(self, agent2_policy: callable, rest:bool = True):
+    def __init__(self, agent2_policy: callable, rest: bool = True):
         self.IDENTIFIER = 1
         self.OPPOSITE_IDENTIFIER = 2
         self.LENGTH = 6
@@ -67,6 +63,15 @@ class FourInARow(py_environment.PyEnvironment):
         self._episode_ended = False
         return ts.restart(np.array(self._state1, dtype=np.int32))
 
+    def _tf_time_step(self, state = None):
+        if state is not None:
+            tf_state = tf.convert_to_tensor([np.array(state, dtype=np.int32)])
+        else:
+            tf_state = tf.convert_to_tensor([np.array(self._state2, dtype=np.int32)])
+        tf_reward = tf.convert_to_tensor([np.array(0.0, dtype=np.float32)], dtype=tf.float32)
+        agent2_time_step = ts.termination(tf_state, tf_reward)
+        return agent2_time_step
+
     def _step(self, action):
 
         if self._episode_ended:
@@ -88,9 +93,7 @@ class FourInARow(py_environment.PyEnvironment):
             return ts.termination(np.array(self._state1, dtype=np.int32), reward=0.5)
 
         # Make a second action
-        tf_state = tf.convert_to_tensor([np.array(self._state2, dtype=np.int32)])
-        tf_reward = tf.convert_to_tensor([np.array(0.0, dtype=np.float32)], dtype=tf.float32)
-        agent2_time_step = ts.termination(tf_state, tf_reward)
+        agent2_time_step = self._tf_time_step()
 
         if self.agent2_policy is None:
             raise Exception('Error!, agent2 dose not exists')
@@ -170,13 +173,11 @@ class FourInARow(py_environment.PyEnvironment):
         board2 = np.zeros((self.LENGTH, self.WIDTH), dtype=int)  # [[0 * 7] * 6]
 
         # What if the other player start
-        if random.random() > 1:  # Never
-            time_step = ts.transition(np.array(board1, dtype=np.int32), reward=0)
-            action_step = self.agent2_policy.action(time_step)
-            # print(action_step)
-            action = action_step
-            board2[-1][action] = self.IDENTIFIER
+        if random.random() > 0.5:
+            time_step = self._tf_time_step(state=board2)
+            action = self.agent2_policy.action(time_step).action
             board1[-1][action] = self.OPPOSITE_IDENTIFIER
+            board2[-1][action] = self.IDENTIFIER
 
         return board1, board2
 
@@ -189,16 +190,18 @@ class FourInARow(py_environment.PyEnvironment):
 
 # Tests
 
-policy_dir = os.path.join(tempdir, 'policy')
-my_policy = tf.compat.v2.saved_model.load(policy_dir)
-# setup env
-env = FourInARow(my_policy)
+# policy_dir = os.path.join(tempdir, 'policy')
+# my_policy = tf.compat.v2.saved_model.load(policy_dir)
+# # setup env
+# env = FourInARow(my_policy)
 # utils.validate_py_environment(env, episodes=10)  # Pass
-env = tf_py_environment.TFPyEnvironment(env)
-
-random_policy = random_tf_policy.RandomTFPolicy(env.time_step_spec(), env.action_spec())
+# env = tf_py_environment.TFPyEnvironment(env)
+#
+# random_policy = random_tf_policy.RandomTFPolicy(env.time_step_spec(), env.action_spec())
 
 # # Save
+# tf_policy_saver = policy_saver.PolicySaver(random_policy)
+# tf_policy_saver.save("random_po")
 # policy_dir = os.path.join(tempdir, 'policy')
 # tf_policy_saver = policy_saver.PolicySaver(random_policy)
 # tf_policy_saver.save(policy_dir)
@@ -226,6 +229,6 @@ def run(times: int = 8):
     print('Final Reward = ', cumulative_reward)
 
 
-run()
+# run(times=20)
 
 
